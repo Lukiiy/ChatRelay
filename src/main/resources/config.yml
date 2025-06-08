@@ -1,0 +1,22 @@
+# The max amount of messages to be saved before each being overwritten
+limit: 20
+
+# Delay (in tick) to display the relay |
+delay: 1
+
+# Messages & formats | Set any to '' to disable | Everything must be formatted with MiniMessage (https://docs.advntr.dev/minimessage/format.html)
+msg:
+  # The format that the plugin will use to save messages | Default: "%s: %s" | First argument is the player's display name, the second is the message | Can't be disabled
+  format: "<%s> %s"
+  # Optional header for the relay messages
+  header: ""
+  # Optional footer for the relay messages
+  footer: "<newline><b><c:#ffbaf1>That's all for the chat relay! ↑</c></b><newline>"
+  # Optional message that will be sent if there's no chat log.
+  noHistory: ""
+
+requirePermission:
+  # If enabled, a player will need "chatrelay.see" to see the relay
+  display: false
+  # If enabled, a player will need "chatrelay.msg" to get their message logged
+  save: false

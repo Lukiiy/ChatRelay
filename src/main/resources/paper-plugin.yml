@@ -1,0 +1,7 @@
+name: ChatRelay
+version: ${version}
+main: me.lukiiy.chatRelay.ChatRelay
+api-version: '1.20'
+load: STARTUP
+authors: [Lukiiy]
+description: Saves & relays chat sessions
