@@ -1,6 +1,8 @@
 package me.lukiiy.chatRelay
 
 import io.papermc.paper.event.player.AsyncChatEvent
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
+import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
@@ -11,22 +13,23 @@ import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.nio.file.Files
-import java.util.*
-import java.util.function.Consumer
-
+import java.util.concurrent.ConcurrentLinkedQueue
 
 class ChatRelay : JavaPlugin(), Listener {
-    private val messages: MutableList<String> = LinkedList()
+    private val messages: ConcurrentLinkedQueue<String> = ConcurrentLinkedQueue()
     private lateinit var logFile: File
     private val mini = MiniMessage.miniMessage()
-
-    var linePredicate: (String) -> Boolean = { true } // For plugins
+    private var predicates: MutableList<(String) -> Boolean> = mutableListOf() // For plugins
 
     override fun onEnable() {
         server.pluginManager.registerEvents(this, this)
 
         setupConfig()
         logFile = File(dataFolder, "chat.log")
+
+        lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) {
+            it.registrar().register(Cmd.register(), "Main command for ChatRelay")
+        }
 
         loadLog()
     }
@@ -37,25 +40,6 @@ class ChatRelay : JavaPlugin(), Listener {
         fun getInstance(): ChatRelay = getPlugin(ChatRelay::class.java)
     }
 
-    fun relay(player: Player) {
-        val header = config.getString("msg.header")
-        val footer = config.getString("msg.footer")
-        val noHistory = config.getString("msg.noHistory")
-
-        if (messages.isEmpty()) {
-            if (!noHistory.isNullOrEmpty()) player.sendMessage(mini.deserialize(noHistory))
-            return
-        }
-
-        synchronized(messages) {
-            if (!header.isNullOrEmpty()) player.sendMessage(mini.deserialize(header))
-
-            messages.forEach { player.sendMessage(mini.deserialize(it)) }
-
-            if (!footer.isNullOrEmpty()) player.sendMessage(mini.deserialize(footer))
-        }
-    }
-
     // Config
     fun setupConfig() {
         saveDefaultConfig()
@@ -63,12 +47,32 @@ class ChatRelay : JavaPlugin(), Listener {
         saveConfig()
     }
 
+    /**
+     * Shows the last few saved messages to an audience
+     * @param audience An [Audience], e.g. a [Player] object
+     */
+    fun showRelay(audience: Audience) {
+        val header = config.getString("msg.header")
+        val footer = config.getString("msg.footer")
+        val noHistory = config.getString("msg.noHistory")
+        val msgs = getMessages()
+
+        if (msgs.isEmpty()) {
+            if (!noHistory.isNullOrEmpty()) audience.sendMessage(mini.deserialize(noHistory))
+            return
+        }
+
+        if (!header.isNullOrEmpty()) audience.sendMessage(mini.deserialize(header))
+        msgs.forEach { audience.sendMessage(mini.deserialize(it)) }
+        if (!footer.isNullOrEmpty()) audience.sendMessage(mini.deserialize(footer))
+    }
+
     // File
     private fun saveLog() = try {
-        BufferedWriter(FileWriter(logFile)).use { writer ->
+        BufferedWriter(FileWriter(logFile)).use {
             for (msg in messages) {
-                writer.write(msg)
-                writer.newLine()
+                it.write(msg)
+                it.newLine()
             }
         }
     } catch (e: Exception) { logger.warning(e.message) }
@@ -82,27 +86,51 @@ class ChatRelay : JavaPlugin(), Listener {
         } catch (e: Exception) { logger.warning(e.message) }
     }
 
-    // Listener
+    // API
+
+    /**
+     * Gets the saved messages from
+     */
+    fun getMessages(): List<String> = messages.toList()
+
+    fun addCondition(condition: (String) -> Boolean) {
+        predicates += condition
+    }
+
+    fun removeCondition(condition: (String) -> Boolean) {
+        predicates -= condition
+    }
+
+    fun doesMessageComply(message: String): Boolean = predicates.all { it(message) }
+
+    @JvmOverloads
+    fun addMessageToRelay(message: String, complianceCheck: Boolean = true) {
+        if (!complianceCheck || doesMessageComply(message)) {
+            messages.add(message)
+            while (messages.size > config.getInt("limit")) messages.poll()
+        }
+    }
+
+    fun removeMessageFromRelay(message: String) = messages.remove(message)
+
+    // Echo
     @EventHandler
-    fun chat(e: AsyncChatEvent) {
+    private fun chat(e: AsyncChatEvent) {
         val p = e.player
         val name = mini.serialize(p.displayName())
         val msg = mini.serialize(e.message())
 
-        if (!linePredicate(msg) || (config.getBoolean("requirePermission.save") && !p.hasPermission("chatrelay.save"))) return
+        if (!doesMessageComply(msg) || (config.getBoolean("requirePermission.save") && !p.hasPermission("chatrelay.save"))) return
 
-        synchronized(messages) {
-            messages.add(String.format(config.getString("msg.format") ?: "%s: %s", name, msg))
-            if (messages.size > config.getInt("limit")) messages.removeAt(0)
-            saveLog()
-        }
+        addMessageToRelay(String.format(config.getString("msg.format") ?: "%s: %s", name, msg))
     }
 
     @EventHandler
-    fun join(e: PlayerJoinEvent) {
+    private fun join(e: PlayerJoinEvent) {
         val p = e.player
+
         if (config.getBoolean("requirePermission.display") && !p.hasPermission("chatrelay.see")) return
 
-        p.scheduler.runDelayed(this, { relay(p) }, null, config.getLong("delay", 1).coerceAtLeast(1))
+        p.scheduler.runDelayed(this, { showRelay(p) }, null, config.getLong("delay", 1).coerceAtLeast(1))
     }
 }
