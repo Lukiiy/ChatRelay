@@ -13,6 +13,8 @@ import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
 import java.nio.file.Files
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentLinkedQueue
 
 class ChatRelay : JavaPlugin(), Listener {
@@ -93,14 +95,27 @@ class ChatRelay : JavaPlugin(), Listener {
      */
     fun getMessages(): List<String> = messages.toList()
 
+    /**
+     * Add conditions for the logger
+     * @param condition A predicate
+     */
     fun addCondition(condition: (String) -> Boolean) {
         predicates += condition
     }
 
+    /**
+     * Add conditions from the logger
+     * @param condition A predicate
+     */
     fun removeCondition(condition: (String) -> Boolean) {
         predicates -= condition
     }
 
+    /**
+     * Checks if a message complies with the registered conditions
+     * @param message The message
+     * @return True if the message complies, false otherwise
+     */
     fun doesMessageComply(message: String): Boolean = predicates.all { it(message) }
 
     @JvmOverloads
@@ -111,18 +126,24 @@ class ChatRelay : JavaPlugin(), Listener {
         }
     }
 
+    /**
+     * Removes a message from the logs
+     * @param message The message
+     */
     fun removeMessageFromRelay(message: String) = messages.remove(message)
 
     // Echo
     @EventHandler
     private fun chat(e: AsyncChatEvent) {
         val p = e.player
-        val name = mini.serialize(p.displayName())
         val msg = mini.serialize(e.message())
 
         if (!doesMessageComply(msg) || (config.getBoolean("requirePermission.save") && !p.hasPermission("chatrelay.save"))) return
 
-        addMessageToRelay(String.format(config.getString("msg.format") ?: "%s: %s", name, msg))
+        val format = config.getString("msg.format") ?: "<%p> %msg"
+        val time = LocalDateTime.now().format(DateTimeFormatter.ofPattern(config.getString("msg.timeFormat") ?: "HH:mm"))
+
+        addMessageToRelay(format.replace("%time", time).replace("%p", mini.serialize(p.displayName())).replace("%msg", msg))
     }
 
     @EventHandler

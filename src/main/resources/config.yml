@@ -6,14 +6,16 @@ delay: 1
 
 # Messages & formats | Set any to '' to disable | Everything must be formatted using MiniMessage (https://docs.advntr.dev/minimessage/format.html)
 msg:
-  # The format that the plugin will use to save messages | Default: "%s: %s" | First argument is the player's display name, the second is the message
-  format: "<%s> %s"
+  # The format that the plugin will use to save messages | Default: "%p: %msg"
+  format: "<gray><i>%time</i></gray> <%p> %msg"
   # Optional header for the relay messages
   header: ""
   # Optional footer for the relay messages
   footer: "<newline><b><c:#ffbaf1>↑ That's all for the chat relay!</c></b><newline>"
   # Optional message that will be sent if there's no chat log.
   noHistory: ""
+  # The format for the "%time" placeholder. Must follow Java's DateTimeFormatter pattern
+  timeFormat: "HH:mm"
 
 requirePermission:
   # If enabled, a player will need the permission "chatrelay.see" to see the relay
